@@ -11,26 +11,27 @@
 
 using namespace std;
 
-class Point
-{
+class Point {
 private:
-	int id_point, id_cluster;
-	vector<double> values;
-	int total_values;
-	string name;
+    int id_point, id_cluster;   // unique id, and which cluster it's in
+    vector<double> values;      // coordinates of this point
+    int total_values;           // how many coordinates (dimensions)
+    string name;                // optional label (like "Point A")
 
 public:
-	Point(int id_point, vector<double>& values, string name = "")
-	{
-		this->id_point = id_point;
-		total_values = values.size();
+    // Constructor: makes a point with given values and optional name
+    Point(int id_point, vector<double>& values, string name = "") {
+        this->id_point = id_point;
+        total_values = values.size();
 
-		for(int i = 0; i < total_values; i++)
-			this->values.push_back(values[i]);
+        for(int i = 0; i < total_values; i++)
+            this->values.push_back(values[i]);  // copy values
 
-		this->name = name;
-		id_cluster = -1;
-	}
+        this->name = name;
+        id_cluster = -1;  // -1 means not yet assigned to any cluster
+    }
+
+    // simple getter and setter functions
 
 	int getID()
 	{
@@ -68,45 +69,41 @@ public:
 	}
 };
 
-class Cluster
-{
+class Cluster {
 private:
-	int id_cluster;
-	vector<double> central_values;
-	vector<Point> points;
+    int id_cluster;
+    vector<double> central_values; // coordinates of the cluster center
+    vector<Point> points;          // all points in this cluster
 
 public:
-	Cluster(int id_cluster, Point point)
-	{
-		this->id_cluster = id_cluster;
+    // Constructor: initialize a cluster using a point as its first center
+    Cluster(int id_cluster, Point point) {
+        this->id_cluster = id_cluster;
+        int total_values = point.getTotalValues();
 
-		int total_values = point.getTotalValues();
+        // center starts at this point’s coordinates
+        for(int i = 0; i < total_values; i++)
+            central_values.push_back(point.getValue(i));
 
-		for(int i = 0; i < total_values; i++)
-			central_values.push_back(point.getValue(i));
+        points.push_back(point);  // add the point to this cluster
+    }
 
-		points.push_back(point);
-	}
+    void addPoint(Point point) { points.push_back(point); }
 
-	void addPoint(Point point)
-	{
-		points.push_back(point);
-	}
+    // remove a point by ID
+    bool removePoint(int id_point) {
+        int total_points = points.size();
 
-	bool removePoint(int id_point)
-	{
-		int total_points = points.size();
+        for(int i = 0; i < total_points; i++) {
+            if(points[i].getID() == id_point) {
+                points.erase(points.begin() + i);  // delete it
+                return true;
+            }
+        }
+        return false;
+    }
 
-		for(int i = 0; i < total_points; i++)
-		{
-			if(points[i].getID() == id_point)
-			{
-				points.erase(points.begin() + i);
-				return true;
-			}
-		}
-		return false;
-	}
+    // getters and setters for cluster center
 
 	double getCentralValue(int index)
 	{
@@ -137,9 +134,13 @@ public:
 class KMeans
 {
 private:
-	int K; // number of clusters
-	int total_values, total_points, max_iterations;
-	vector<Cluster> clusters;
+    int K;                // number of clusters
+    int total_values;     // number of coordinates per point
+    int total_points;     // number of points
+    int max_iterations;   // stop after this many rounds
+    vector<Cluster> clusters;
+
+    // Finds which cluster center is closest to a given point
 
 	// return ID of nearest center (uses euclidean distance)
 	int getIDNearestCenter(Point point)
@@ -147,6 +148,7 @@ private:
 		double sum = 0.0, min_dist;
 		int id_cluster_center = 0;
 
+		// distance to first cluster center
 		for(int i = 0; i < total_values; i++)
 		{
 			sum += pow(clusters[0].getCentralValue(i) -
@@ -155,6 +157,7 @@ private:
 
 		min_dist = sqrt(sum);
 
+		 // check all other clusters
 		for(int i = 1; i < K; i++)
 		{
 			double dist;
@@ -179,6 +182,7 @@ private:
 	}
 
 public:
+	// constructor
 	KMeans(int K, int total_points, int total_values, int max_iterations)
 	{
 		this->K = K;
@@ -192,16 +196,16 @@ public:
         auto begin = chrono::high_resolution_clock::now();
 
 		if(K > total_points)
-			return;
+			return;  // can’t have more clusters than points
 
-		vector<int> prohibited_indexes;
+		vector<int> prohibited_indexes;  // track which points we already used as centers
 
-		// choose K distinct values for the centers of the clusters
+		// 1. choose K distinct values for the centers of the clusters
 		for(int i = 0; i < K; i++)
 		{
 			while(true)
 			{
-				int index_point = rand() % total_points;
+				int index_point = rand() % total_points;  // pick random point
 
 				if(find(prohibited_indexes.begin(), prohibited_indexes.end(),
 						index_point) == prohibited_indexes.end())
@@ -218,6 +222,7 @@ public:
 
 		int iter = 1;
 
+		// 2. Repeat assignment + recalculation
 		while(true)
 		{
 			bool done = true;
@@ -256,6 +261,7 @@ public:
 				}
 			}
 
+			// stop if nothing changed or max iterations reached
 			if(done == true || iter >= max_iterations)
 			{
 				cout << "Break in iteration " << iter << "\n\n";
@@ -267,6 +273,7 @@ public:
         auto end = chrono::high_resolution_clock::now();
 
 		// shows elements of clusters
+		// 3. Print results
 		for(int i = 0; i < K; i++)
 		{
 			int total_points_cluster =  clusters[i].getTotalPoints();
@@ -292,6 +299,7 @@ public:
 				cout << clusters[i].getCentralValue(j) << " ";
 
 			cout << "\n\n";
+			 // print timing info
             cout << "TOTAL EXECUTION TIME = "<<std::chrono::duration_cast<std::chrono::microseconds>(end-begin).count()<<"\n";
 
             cout << "TIME PHASE 1 = "<<std::chrono::duration_cast<std::chrono::microseconds>(end_phase1-begin).count()<<"\n";
@@ -303,19 +311,22 @@ public:
 
 int main(int argc, char *argv[])
 {
-	srand (time(NULL));
+	srand (time(NULL)); // seed random number generator
 
 	int total_points, total_values, K, max_iterations, has_name;
 
+	// input: number of points, values per point, clusters, iterations, names flag
 	cin >> total_points >> total_values >> K >> max_iterations >> has_name;
 
 	vector<Point> points;
 	string point_name;
 
+	// read each point
 	for(int i = 0; i < total_points; i++)
 	{
 		vector<double> values;
 
+		// read coordinates (features)
 		for(int j = 0; j < total_values; j++)
 		{
 			double value;
@@ -323,6 +334,7 @@ int main(int argc, char *argv[])
 			values.push_back(value);
 		}
 
+		// if names are given, read them too
 		if(has_name)
 		{
 			cin >> point_name;
@@ -336,6 +348,7 @@ int main(int argc, char *argv[])
 		}
 	}
 
+	// run KMeans algorithm
 	KMeans kmeans(K, total_points, total_values, max_iterations);
 	kmeans.run(points);
 
