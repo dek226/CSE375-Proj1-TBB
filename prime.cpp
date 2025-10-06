@@ -1,18 +1,20 @@
+#include <iostream>
+#include <thread>
+#include <atomic>
 #include <vector>
-//#include <oneapi/tbb/parallel_for.h>
-//#include <oneapi/tbb/blocked_range.h>
+#include <chrono>
 #include "oneapi/tbb.h"
 using namespace oneapi::tbb;
 
-inline bool is_prime_naive(uint64_t n) {
+bool is_prime_naive(uint64_t n) {
     if (n <= 1){
             return false;
     }
         else {
 
             // Count the divisors of n
-            int cnt = 0
-            for (int i = 1; i <= n; i++) {
+
+            for (int i = 2; i <= n; i++) {
                 if (n % i == 0){
                     return false;
                 }
@@ -23,7 +25,7 @@ inline bool is_prime_naive(uint64_t n) {
     }
 
 
-inline bool is_prime_TBB(uint64_t n, std::size_t grain_size) {
+bool is_prime_TBB(uint64_t n, std::size_t grain_size) {
     if (n <= 1){
             return false;
     }
@@ -32,7 +34,7 @@ inline bool is_prime_TBB(uint64_t n, std::size_t grain_size) {
             // Count the divisors of n
             //int cnt = 0;
             //parellelizable part
-            grain_size = 65536;
+            //grain_size = 65536;
             std::atomic<bool> found_divisor(false);
             parallel_for(blocked_range<size_t>(1,n, grain_size), 
                 [&found_divisor, n](const blocked_range<size_t>& r) {
@@ -52,7 +54,7 @@ inline bool is_prime_TBB(uint64_t n, std::size_t grain_size) {
     }
 
 
-inline bool is_prime_static(uint64_t n, int num_threads) {
+bool is_prime_static(uint64_t n, int num_threads) {
     if (n <= 1){
             return false;
     }
@@ -77,7 +79,7 @@ inline bool is_prime_static(uint64_t n, int num_threads) {
                 }
 
                 uint64_t loop_start = start + t*chunk + ((t+1)*rem_thread);
-                uint64_t loop_end = loop_start + chunk_size;
+                uint64_t loop_end = loop_start + curr_chunk;
                 //create lambda
                 threads.emplace_back([loop_start, loop_end, &found_divisor, n](){
                     for(uint64_t i= loop_start; i<loop_end; i++){
@@ -100,12 +102,12 @@ inline bool is_prime_static(uint64_t n, int num_threads) {
     }
 
 
-    inline bool is_prime_dynamic(uint64_t n, int num_threads, uint64_t batch_size) {
+    bool is_prime_dynamic(uint64_t n, int num_threads, uint64_t batch_size) {
     if (n <= 1)
             return false;
         else {
 
-            batch_size = 64;
+            //batch_size = 64;
             uint64_t start = 2;
             uint64_t end = n;
             
@@ -134,13 +136,13 @@ inline bool is_prime_static(uint64_t n, int num_threads) {
                             loop_end = end;
                         }
                         for(uint64_t i= loop_start; i<loop_end; i++){
-                        if(found_divisor.load()){
-                            return;
-                        }
-                        if (n % i == 0){
-                            found_divisor.store(true);
-                            return;
-                        }
+                            if(found_divisor.load()){
+                                return;
+                            }
+                            if (n % i == 0){
+                                found_divisor.store(true);
+                                return;
+                            }
                         }
 
                     }
@@ -152,3 +154,46 @@ inline bool is_prime_static(uint64_t n, int num_threads) {
         return !found_divisor.load();
         }
     }
+
+
+
+
+    // ---------- Timing utility ----------
+template<typename F>
+double time_it(F func) {
+    auto start = std::chrono::high_resolution_clock::now();
+    func();
+    auto end = std::chrono::high_resolution_clock::now();
+    return std::chrono::duration<double>(end - start).count();
+}
+
+// ---------- Test harness ----------
+int main() {
+    std::vector<uint64_t> test_numbers = {
+        97, 999983, 1000003, 9999791, 982451653
+    };
+
+    int num_threads = std::thread::hardware_concurrency();
+    std::cout << "Using " << num_threads << " threads\n";
+
+    for (auto n : test_numbers) {
+        std::cout << "\nTesting n = " << n << "\n";
+
+        bool p1, p2, p3, p4;
+
+        double t1 = time_it([&]() { p1 = is_prime_naive(n); });
+        double t2 = time_it([&]() { p2 = is_prime_static(n, num_threads); });
+        double t3 = time_it([&]() { p3 = is_prime_dynamic(n, num_threads, 64); });
+        double t4 = time_it([&]() { p4 = is_prime_TBB(n, 65536); });
+
+        std::cout << "Naive:   " << t1 << "s → " << (p1 ? "prime" : "not prime") << "\n";
+        std::cout << "Static:  " << t2 << "s → " << (p2 ? "prime" : "not prime") << "\n";
+        std::cout << "Dynamic: " << t3 << "s → " << (p3 ? "prime" : "not prime") << "\n";
+        std::cout << "TBB:     " << t4 << "s → " << (p4 ? "prime" : "not prime") << "\n";
+
+        if (!(p1 == p2 && p1 == p3 && p1 == p4))
+            std::cerr << "Mismatch detected for n=" << n << "!\n";
+    }
+
+    return 0;
+}

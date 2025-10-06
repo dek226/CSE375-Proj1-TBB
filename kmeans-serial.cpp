@@ -8,6 +8,8 @@
 #include <time.h>
 #include <algorithm>
 #include <chrono>
+#include "oneapi/tbb.h"
+using namespace oneapi::tbb;
 
 using namespace std;
 
@@ -24,7 +26,7 @@ public:
         this->id_point = id_point;
         total_values = values.size();
 
-        for(int i = 0; i < total_values; i++)
+        for(int i = 0; i < total_values; i++) 
             this->values.push_back(values[i]);  // copy values
 
         this->name = name;
@@ -260,6 +262,219 @@ public:
 					}
 				}
 			}
+
+			// stop if nothing changed or max iterations reached
+			if(done == true || iter >= max_iterations)
+			{
+				cout << "Break in iteration " << iter << "\n\n";
+				break;
+			}
+
+			iter++;
+		}
+        auto end = chrono::high_resolution_clock::now();
+
+		// shows elements of clusters
+		// 3. Print results
+		for(int i = 0; i < K; i++)
+		{
+			int total_points_cluster =  clusters[i].getTotalPoints();
+
+			cout << "Cluster " << clusters[i].getID() + 1 << endl;
+			for(int j = 0; j < total_points_cluster; j++)
+			{
+				cout << "Point " << clusters[i].getPoint(j).getID() + 1 << ": ";
+				for(int p = 0; p < total_values; p++)
+					cout << clusters[i].getPoint(j).getValue(p) << " ";
+
+				string point_name = clusters[i].getPoint(j).getName();
+
+				if(point_name != "")
+					cout << "- " << point_name;
+
+				cout << endl;
+			}
+
+			cout << "Cluster values: ";
+
+			for(int j = 0; j < total_values; j++)
+				cout << clusters[i].getCentralValue(j) << " ";
+
+			cout << "\n\n";
+			 // print timing info
+            cout << "TOTAL EXECUTION TIME = "<<std::chrono::duration_cast<std::chrono::microseconds>(end-begin).count()<<"\n";
+
+            cout << "TIME PHASE 1 = "<<std::chrono::duration_cast<std::chrono::microseconds>(end_phase1-begin).count()<<"\n";
+
+            cout << "TIME PHASE 2 = "<<std::chrono::duration_cast<std::chrono::microseconds>(end-end_phase1).count()<<"\n";
+		}
+	}
+};
+
+class TBB_KMeans
+{
+private:
+    int K;                // number of clusters
+    int total_values;     // number of coordinates per point
+    int total_points;     // number of points
+    int max_iterations;   // stop after this many rounds
+    vector<Cluster> clusters;
+
+    // Finds which cluster center is closest to a given point
+
+	// return ID of nearest center (uses euclidean distance)
+	int getIDNearestCenter(Point point)
+	{
+		double sum = 0.0, min_dist;
+		int id_cluster_center = 0;
+
+		// distance to first cluster center
+		for(int i = 0; i < total_values; i++)
+		{
+			sum += pow(clusters[0].getCentralValue(i) -
+					   point.getValue(i), 2.0);
+		}
+
+		min_dist = sqrt(sum);
+
+		 // check all other clusters
+		for(int i = 1; i < K; i++)
+		{
+			double dist;
+			sum = 0.0;
+
+			for(int j = 0; j < total_values; j++)
+			{
+				sum += pow(clusters[i].getCentralValue(j) -
+						   point.getValue(j), 2.0);
+			}
+
+			dist = sqrt(sum);
+
+			if(dist < min_dist)
+			{
+				min_dist = dist;
+				id_cluster_center = i;
+			}
+		}
+
+		return id_cluster_center;
+	}
+
+public:
+	// constructor
+	KMeans(int K, int total_points, int total_values, int max_iterations)
+	{
+		this->K = K;
+		this->total_points = total_points;
+		this->total_values = total_values;
+		this->max_iterations = max_iterations;
+	}
+
+	void run(vector<Point> & points)
+	{
+        auto begin = chrono::high_resolution_clock::now();
+
+		if(K > total_points)
+			return;  // can’t have more clusters than points
+
+		vector<int> prohibited_indexes;  // track which points we already used as centers
+
+		// 1. choose K distinct values for the centers of the clusters
+		for(int i = 0; i < K; i++)
+		{
+			while(true)
+			{
+				int index_point = rand() % total_points;  // pick random point
+
+				if(find(prohibited_indexes.begin(), prohibited_indexes.end(),
+						index_point) == prohibited_indexes.end())
+				{
+					prohibited_indexes.push_back(index_point);
+					points[index_point].setCluster(i);
+					Cluster cluster(i, points[index_point]);
+					clusters.push_back(cluster);
+					break;
+				}
+			}
+		}
+        auto end_phase1 = chrono::high_resolution_clock::now();
+
+		int iter = 1;
+
+		// 2. Repeat assignment + recalculation
+        while(true)
+        {
+            // Vector to hold the new cluster ID for each point.
+            // This is used to decouple the parallel assignment from the serial updates (add/remove) to avoid a race condition.
+            vector<int> new_cluster_ids(total_points);
+
+            // 🌟 PARALLEL STEP 1: Associate each point to the nearest center
+            // The loop over total_points is independent for each point.
+            bool done = true;
+            tbb::atomic<bool> parallel_done = true; // Use atomic for safe updates from parallel_for
+
+            tbb::parallel_for(tbb::blocked_range<int>(0, total_points),
+                [&](const tbb::blocked_range<int>& r) {
+                for (int i = r.begin(); i != r.end(); ++i) {
+                    int id_old_cluster = points[i].getCluster();
+                    int id_nearest_center = getIDNearestCenter(points[i]);
+
+                    new_cluster_ids[i] = id_nearest_center;
+
+                    if (id_old_cluster != id_nearest_center) {
+                        parallel_done = false; // Flag that a point moved
+                    }
+                }
+            });
+
+            // Re-assign points serially based on results of parallel step
+            done = parallel_done;
+
+            // Clear all points from clusters before re-assignment (SERIAL cleanup)
+            for(int i = 0; i < K; i++) {
+                // To safely update points and clusters, we empty the clusters first.
+                // NOTE: The original code does remove/add within the loop, which is a big performance hit due to vector re-allocation.
+                // Clearing and re-adding is usually better, but the original code's logic is kept for minimum change.
+                // However, since we now have *all* new cluster IDs, we can update the points first, and then rebuild the clusters.
+
+                // A safer/simpler way to avoid complex concurrency and race conditions with vector modifications:
+                // 1. Clear all points from clusters (since they're about to be reassigned).
+                clusters[i].points.clear();
+            }
+
+            // Assign points to their new clusters (SERIAL update to shared 'clusters' data structure)
+            for(int i = 0; i < total_points; i++)
+            {
+                int id_nearest_center = new_cluster_ids[i];
+                points[i].setCluster(id_nearest_center);
+                clusters[id_nearest_center].addPoint(points[i]);
+            }
+            // Note: The above two serial loops replace the original complex serial logic of removePoint/addPoint inside the assignment loop.
+            // This simplification is done to correctly support the prior *parallel* calculation of `id_nearest_center` for all points.
+
+            // 🌟 PARALLEL STEP 2: Recalculating the center of each cluster
+            tbb::parallel_for(tbb::blocked_range<int>(0, K),
+                [&](const tbb::blocked_range<int>& r) {
+                for (int i = r.begin(); i != r.end(); ++i) { // Loop over K clusters
+                    for(int j = 0; j < total_values; j++) // Loop over dimensions
+                    {
+                        int total_points_cluster = clusters[i].getTotalPoints();
+                        double sum = 0.0;
+
+                        if(total_points_cluster > 0)
+                        {
+                            // Inner loop: sum up values for the j-th dimension for all points in cluster i
+                            // This part (summation) can also be parallelized using tbb::parallel_reduce if the cluster point count is large.
+                            // For simplicity and avoiding complex structure changes, we keep this as a simple loop:
+                            for(int p = 0; p < total_points_cluster; p++)
+                                sum += clusters[i].getPoint(p).getValue(j);
+
+                            clusters[i].setCentralValue(j, sum / total_points_cluster);
+                        }
+                    }
+                }
+            });
 
 			// stop if nothing changed or max iterations reached
 			if(done == true || iter >= max_iterations)
