@@ -406,10 +406,9 @@ public:
         while(true)
         {
             // Vector to hold the new cluster ID for each point.
-            // This is used to decouple the parallel assignment from the serial updates (add/remove) to avoid a race condition.
             vector<int> new_cluster_ids(total_points);
 
-            // 🌟 PARALLEL STEP 1: Associate each point to the nearest center
+            //PARALLEL STEP 1: Associate each point to the nearest center
             // The loop over total_points is independent for each point.
             bool done = true;
             tbb::atomic<bool> parallel_done = true; // Use atomic for safe updates from parallel_for
@@ -433,13 +432,7 @@ public:
 
             // Clear all points from clusters before re-assignment (SERIAL cleanup)
             for(int i = 0; i < K; i++) {
-                // To safely update points and clusters, we empty the clusters first.
-                // NOTE: The original code does remove/add within the loop, which is a big performance hit due to vector re-allocation.
-                // Clearing and re-adding is usually better, but the original code's logic is kept for minimum change.
-                // However, since we now have *all* new cluster IDs, we can update the points first, and then rebuild the clusters.
-
-                // A safer/simpler way to avoid complex concurrency and race conditions with vector modifications:
-                // 1. Clear all points from clusters (since they're about to be reassigned).
+                
                 clusters[i].points.clear();
             }
 
@@ -450,10 +443,9 @@ public:
                 points[i].setCluster(id_nearest_center);
                 clusters[id_nearest_center].addPoint(points[i]);
             }
-            // Note: The above two serial loops replace the original complex serial logic of removePoint/addPoint inside the assignment loop.
-            // This simplification is done to correctly support the prior *parallel* calculation of `id_nearest_center` for all points.
+           
 
-            // 🌟 PARALLEL STEP 2: Recalculating the center of each cluster
+            //PARALLEL STEP 2: Recalculating the center of each cluster
             tbb::parallel_for(tbb::blocked_range<int>(0, K),
                 [&](const tbb::blocked_range<int>& r) {
                 for (int i = r.begin(); i != r.end(); ++i) { // Loop over K clusters
@@ -464,9 +456,7 @@ public:
 
                         if(total_points_cluster > 0)
                         {
-                            // Inner loop: sum up values for the j-th dimension for all points in cluster i
-                            // This part (summation) can also be parallelized using tbb::parallel_reduce if the cluster point count is large.
-                            // For simplicity and avoiding complex structure changes, we keep this as a simple loop:
+                           
                             for(int p = 0; p < total_points_cluster; p++)
                                 sum += clusters[i].getPoint(p).getValue(j);
 

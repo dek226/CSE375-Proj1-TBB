@@ -121,10 +121,7 @@ bool is_prime_static(uint64_t n, int num_threads) {
             for (int t=0; t<num_threads; t++){
                 threads.emplace_back([&next, &found_divisor, batch_size, end, n](){
                     while(true){
-                        //std::atomic::fetch_add is a C++ function that performs an atomic read-modify-write operation on 
-                        // an std::atomic variable. This means the entire operation—reading the current value, adding an argument to it, 
-                        // and writing the new value back—is guaranteed to be indivisible and cannot be interrupted by other threads.
-                        // Atomically claim a batch: get starting number for this worker
+                        
                         uint64_t loop_start = next.fetch_add(batch_size);
                         // If my_start is already >= end_exclusive, no work remains
                         if (loop_start >= end){
