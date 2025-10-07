@@ -156,8 +156,7 @@ bool is_prime_static(uint64_t n, int num_threads) {
 
 // --- TOP-LEVEL BENCHMARK WRAPPERS (SEQUENTIAL OUTER LOOP) ---
 
-// Finds all primes up to N_limit sequentially, using the simple O(N) check.
-// NOTE: This function still collects the full vector of primes, as requested.
+
 std::vector<uint64_t> find_primes_naive(uint64_t N_limit) {
     std::vector<uint64_t> primes;
     for (uint64_t i = 2; i <= N_limit; ++i) {
@@ -168,8 +167,7 @@ std::vector<uint64_t> find_primes_naive(uint64_t N_limit) {
     return primes;
 }
 
-// Finds all primes up to N_limit sequentially, using the TBB O(N) check.
-// NOTE: This now only returns the count of primes found, eliminating vector overhead.
+
 uint64_t find_primes_tbb_checker(uint64_t N_limit, std::size_t grain_size) {
     uint64_t prime_count = 0;
     for (uint64_t i = 2; i <= N_limit; ++i) {
@@ -181,8 +179,7 @@ uint64_t find_primes_tbb_checker(uint64_t N_limit, std::size_t grain_size) {
     return prime_count;
 }
 
-// Finds all primes up to N_limit sequentially, using the Static O(N) check.
-// NOTE: This now only returns the count of primes found, eliminating vector overhead.
+
 uint64_t find_primes_static_checker(uint64_t N_limit, int num_threads) {
     uint64_t prime_count = 0;
     for (uint64_t i = 2; i <= N_limit; ++i) {
@@ -194,8 +191,7 @@ uint64_t find_primes_static_checker(uint64_t N_limit, int num_threads) {
     return prime_count;
 }
 
-// Finds all primes up to N_limit sequentially, using the Dynamic O(N) check.
-// NOTE: This now only returns the count of primes found, eliminating vector overhead.
+
 uint64_t find_primes_dynamic_checker(uint64_t N_limit, int num_threads, uint64_t batch_size) {
     uint64_t prime_count = 0;
     for (uint64_t i = 2; i <= N_limit; ++i) {
@@ -245,7 +241,7 @@ Stats calculate_stats(const std::vector<double>& times) {
 
 int main() {
     // Define the N limits to test (find all primes up to this number)
-    // NOTE: Limits are REDUCED due to the overall O(N^2) complexity of the O(N) primality check.
+    
     std::vector<uint64_t> limits = {
         1000,          // N=10^3
         1000000,         // N=10^6
