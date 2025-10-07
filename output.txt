@@ -1,0 +1,14 @@
+
+===== Running Serial KMeans =====
+Break in iteration 100
+
+
+===== Running Parallel (TBB) KMeans =====
+Break in iteration 100
+
+
+==============================
+Serial Execution Time:   43733 ms
+Parallel Execution Time: 8574 ms
+Speedup: 5.10065x faster
+==============================

@@ -1,5 +1,10 @@
 // Implementation of the KMeans Algorithm
 // reference: https://github.com/marcoscastro/kmeans
+//g++ -O3 -std=c++17 kmeans-serial.cpp -o kmeans_tbb -ltbb
+// works:  g++ -O3 -std=c++17 kmeans-serial.cpp -o kmeans_tbb $(pkg-config --cflags --libs tbb)
+// then ./kmeans_tbb < poker_train.data > output.txt
+
+
 
 #include <iostream>
 #include <vector>
@@ -9,6 +14,10 @@
 #include <algorithm>
 #include <chrono>
 #include "oneapi/tbb.h"
+#include <fstream>
+#include <sstream>
+#include <atomic>
+
 using namespace oneapi::tbb;
 
 using namespace std;
@@ -131,6 +140,10 @@ public:
 	{
 		return id_cluster;
 	}
+
+	 void clearPoints() {
+        points.clear();
+    }
 };
 
 class KMeans
@@ -276,6 +289,7 @@ public:
 
 		// shows elements of clusters
 		// 3. Print results
+		/** 
 		for(int i = 0; i < K; i++)
 		{
 			int total_points_cluster =  clusters[i].getTotalPoints();
@@ -300,14 +314,14 @@ public:
 			for(int j = 0; j < total_values; j++)
 				cout << clusters[i].getCentralValue(j) << " ";
 
-			cout << "\n\n";
+			//cout << "\n\n";
 			 // print timing info
-            cout << "TOTAL EXECUTION TIME = "<<std::chrono::duration_cast<std::chrono::microseconds>(end-begin).count()<<"\n";
+            //cout << "TOTAL EXECUTION TIME = "<<std::chrono::duration_cast<std::chrono::microseconds>(end-begin).count()<<"\n";
 
-            cout << "TIME PHASE 1 = "<<std::chrono::duration_cast<std::chrono::microseconds>(end_phase1-begin).count()<<"\n";
+            //cout << "TIME PHASE 1 = "<<std::chrono::duration_cast<std::chrono::microseconds>(end_phase1-begin).count()<<"\n";
 
-            cout << "TIME PHASE 2 = "<<std::chrono::duration_cast<std::chrono::microseconds>(end-end_phase1).count()<<"\n";
-		}
+            //cout << "TIME PHASE 2 = "<<std::chrono::duration_cast<std::chrono::microseconds>(end-end_phase1).count()<<"\n";
+		}*/
 	}
 };
 
@@ -363,7 +377,7 @@ private:
 
 public:
 	// constructor
-	KMeans(int K, int total_points, int total_values, int max_iterations)
+	TBB_KMeans(int K, int total_points, int total_values, int max_iterations)
 	{
 		this->K = K;
 		this->total_points = total_points;
@@ -411,7 +425,9 @@ public:
             //PARALLEL STEP 1: Associate each point to the nearest center
             // The loop over total_points is independent for each point.
             bool done = true;
-            tbb::atomic<bool> parallel_done = true; // Use atomic for safe updates from parallel_for
+            //tbb::atomic<bool> parallel_done = true; // Use atomic for safe updates from parallel_for
+			std::atomic<bool> parallel_done(true);
+
 
             tbb::parallel_for(tbb::blocked_range<int>(0, total_points),
                 [&](const tbb::blocked_range<int>& r) {
@@ -433,7 +449,8 @@ public:
             // Clear all points from clusters before re-assignment (SERIAL cleanup)
             for(int i = 0; i < K; i++) {
                 
-                clusters[i].points.clear();
+                //clusters[i].points.clear();
+				clusters[i].clearPoints();
             }
 
             // Assign points to their new clusters (SERIAL update to shared 'clusters' data structure)
@@ -479,6 +496,7 @@ public:
 
 		// shows elements of clusters
 		// 3. Print results
+		/** 
 		for(int i = 0; i < K; i++)
 		{
 			int total_points_cluster =  clusters[i].getTotalPoints();
@@ -497,20 +515,21 @@ public:
 
 				cout << endl;
 			}
+				*/
 
-			cout << "Cluster values: ";
+			//cout << "Cluster values: ";
 
-			for(int j = 0; j < total_values; j++)
-				cout << clusters[i].getCentralValue(j) << " ";
+			//for(int j = 0; j < total_values; j++)
+				//cout << clusters[i].getCentralValue(j) << " ";
 
-			cout << "\n\n";
+			//cout << "\n\n";
 			 // print timing info
-            cout << "TOTAL EXECUTION TIME = "<<std::chrono::duration_cast<std::chrono::microseconds>(end-begin).count()<<"\n";
+            //cout << "TOTAL EXECUTION TIME = "<<std::chrono::duration_cast<std::chrono::microseconds>(end-begin).count()<<"\n";
 
-            cout << "TIME PHASE 1 = "<<std::chrono::duration_cast<std::chrono::microseconds>(end_phase1-begin).count()<<"\n";
+            //cout << "TIME PHASE 1 = "<<std::chrono::duration_cast<std::chrono::microseconds>(end_phase1-begin).count()<<"\n";
 
-            cout << "TIME PHASE 2 = "<<std::chrono::duration_cast<std::chrono::microseconds>(end-end_phase1).count()<<"\n";
-		}
+            //cout << "TIME PHASE 2 = "<<std::chrono::duration_cast<std::chrono::microseconds>(end-end_phase1).count()<<"\n";
+		//}
 	}
 };
 
@@ -554,8 +573,30 @@ int main(int argc, char *argv[])
 	}
 
 	// run KMeans algorithm
-	KMeans kmeans(K, total_points, total_values, max_iterations);
-	kmeans.run(points);
+	// SERIAL VERSION 
+    vector<Point> serial_points = points; // copy since run() modifies the data
+    cout << "\n===== Running Serial KMeans =====\n";
+    auto serial_start = chrono::high_resolution_clock::now();
+    KMeans serial_kmeans(K, total_points, total_values, max_iterations);
+    serial_kmeans.run(serial_points);
+    auto serial_end = chrono::high_resolution_clock::now();
+    auto serial_time = chrono::duration_cast<chrono::milliseconds>(serial_end - serial_start).count();
+
+    // PARALLEL VERSION
+    vector<Point> parallel_points = points;
+    cout << "\n===== Running Parallel (TBB) KMeans =====\n";
+    auto parallel_start = chrono::high_resolution_clock::now();
+    TBB_KMeans parallel_kmeans(K, total_points, total_values, max_iterations);
+    parallel_kmeans.run(parallel_points);
+    auto parallel_end = chrono::high_resolution_clock::now();
+    auto parallel_time = chrono::duration_cast<chrono::milliseconds>(parallel_end - parallel_start).count();
+
+    // RESULTS SUMMARY
+    cout << "\n==============================\n";
+    cout << "Serial Execution Time:   " << serial_time << " ms\n";
+    cout << "Parallel Execution Time: " << parallel_time << " ms\n";
+    cout << "Speedup: " << (double)serial_time / parallel_time << "x faster\n";
+    cout << "==============================\n";
 
 	return 0;
 }

@@ -17,14 +17,16 @@
 # convert_poker_to_kmeans.py
 import csv
 
-input_file = "poker-hand-training-true.data"
+folder_name = "poker+hand"
+input_file = "poker-hand-testing.data"
+file_path = f"{folder_name}/{input_file}" # Construct the relative path
 output_file = "poker_train.data"
 
-with open(input_file, "r") as fin, open(output_file, "w") as fout:
+with open(file_path, "r") as fin, open(output_file, "w") as fout:
     reader = csv.reader(fin)
     data = [row for row in reader if row]
 
-    total_points = len(data)
+    total_points = 350000
     total_values = 10  # first 10 columns only
     K = 10             # can choose (e.g., 10 clusters)
     max_iterations = 100
