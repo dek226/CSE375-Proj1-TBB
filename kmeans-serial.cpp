@@ -435,8 +435,8 @@ public:
                     int id_old_cluster = points[i].getCluster();
                     int id_nearest_center = getIDNearestCenter(points[i]);
 
-					points[i].setCluster(id_nearest_center);
-                    //new_cluster_ids[i] = id_nearest_center;
+					//points[i].setCluster(id_nearest_center);
+                    new_cluster_ids[i] = id_nearest_center;
 
                     if (id_old_cluster != id_nearest_center) {
                         parallel_done = false; // Flag that a point moved
@@ -457,10 +457,10 @@ public:
             // Assign points to their new clusters (SERIAL update to shared 'clusters' data structure)
             for(int i = 0; i < total_points; i++)
             {
-                //int id_nearest_center = new_cluster_ids[i];
-                //points[i].setCluster(id_nearest_center);
-                
-				clusters[points[i].getCluster()].addPoint(points[i]);
+                int id_nearest_center = new_cluster_ids[i];
+                points[i].setCluster(id_nearest_center);
+                clusters[id_nearest_center].addPoint(points[i]);
+				//clusters[points[i].getCluster()].addPoint(points[i]);
             }
            
 
